@@ -87,3 +87,100 @@ vocab_size = len(vocab)
 embedding_dim = 256
 #RNN units
 rnn_units = 1204
+
+
+def build_model(vocab_size, embedding_dim, rnn_units, batch_size):
+  model = tf.keras.Sequential([
+    tf.keras.layers.Embedding(vocab_size, embedding_dim,
+                              batch_input_shape=[batch_size, None]),
+    tf.keras.layers.GRU(rnn_units,
+                        return_sequences=True,
+                        stateful=True,
+                        recurrent_initializer='glorot_uniform'),
+    tf.keras.layers.Dense(vocab_size)
+  ])
+  return model
+
+model = build_model(
+    vocab_size = len(vocab),
+    embedding_dim=embedding_dim,
+    rnn_units=rnn_units,
+    batch_size=BATCH_SIZE)
+
+for input_example_batch, target_example_batch in dataset.take(1):
+    example_batch_predictions = model(input_example_batch)
+    print(example_batch_predictions.shape, "# (batch_size, sequence_length, vocab_size)")
+
+#questions about this
+print(model.summary())
+
+sampled_indices = tf.random.categorical(example_batch_predictions[0], num_samples=1)
+#Question: what dimension size/shape does axis -1 return
+sampled_indices = tf.squeeze(sampled_indices,axis=-1).numpy()
+
+#print(idx2char[sampled_indices])
+
+print("Input: \n", repr("".join(idx2char[input_example_batch[0]])))
+print()
+print("Next Char Predictions: \n", repr("".join(idx2char[sampled_indices ])))
+
+def loss(labels, logits):
+  return tf.keras.losses.sparse_categorical_crossentropy(labels, logits, from_logits=True)
+
+
+#QUESTION: losses
+example_batch_loss  = loss(target_example_batch, example_batch_predictions)
+print("Prediction shape: ", example_batch_predictions.shape, " # (batch_size, sequence_length, vocab_size)")
+print("scalar_loss:      ", example_batch_loss.numpy().mean())
+
+model.compile(optimizer='adam', loss=loss)
+
+checkpoint_dir = './training_checkpoints'
+# Name of the checkpoint files
+checkpoint_prefix = os.path.join(checkpoint_dir, "ckpt_{epoch}")
+
+checkpoint_callback=tf.keras.callbacks.ModelCheckpoint(
+    filepath=checkpoint_prefix,
+    save_weights_only=True)
+
+EPOCHS=10
+#history = model.fit(dataset, epochs=EPOCHS, callbacks=[checkpoint_callback])
+
+tf.train.latest_checkpoint(checkpoint_dir)
+
+model = build_model(vocab_size, embedding_dim, rnn_units, batch_size=1)
+
+model.load_weights(tf.train.latest_checkpoint(checkpoint_dir))
+
+model.build(tf.TensorShape([1, None]))
+
+def generate_text(model, start_string):
+
+  #characters to generate
+    num_generate = 1000
+
+  #convert to integer representation
+    input_eval = [char2idx[s] for s in start_string]
+    input_eval = tf.expand_dims(input_eval, 0)
+
+    text_generated = []
+
+    temperature = 2.0
+
+    model.reset_states()
+    for i in range(num_generate):
+        predictions = model(input_eval)
+        # Question: remove the batch dimension?
+        predictions = tf.squeeze(predictions, 0)
+
+        predictions = predictions / temperature
+        predicted_id = tf.random.categorical(predictions, num_samples=1)[-1,0].numpy()
+
+ 
+        input_eval = tf.expand_dims([predicted_id], 0)
+
+        text_generated.append(idx2char[predicted_id])
+    
+    return (start_string + ''.join(text_generated))
+
+print(generate_text(model, start_string=u"ROMEO: "))
