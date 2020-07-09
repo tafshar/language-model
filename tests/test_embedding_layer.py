@@ -41,16 +41,3 @@ def test_learning_with_single_input():
 
     assert new_summed_errors < summed_errors
 
-
-
-
-
-
-
-
-
-
-
-
-
-

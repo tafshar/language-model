@@ -56,4 +56,3 @@ class EmbeddingLayer(Layer):
 
         return config
 
-
