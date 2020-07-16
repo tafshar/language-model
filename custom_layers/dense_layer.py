@@ -8,18 +8,19 @@ from tensorflow.keras.layers import Layer
 class DenseLayer(Layer):
 
     def __init__(self,
-                 input_dim: int,
                  units: int,
-                 #activation_function: Optional[str],
+                 _use_activation_function: bool,
                  ):
         super(DenseLayer, self).__init__()
-        self.input_dim = input_dim
         self.units = units
+        self._use_activation_function = _use_activation_function
+    
 
     def build(self, input_shape: List[Any]):
     #state of weight and bias
         w_init = tf.random_normal_initializer()
-        self.weight = tf.Variable(
+        #w_init = tf.zeros_initializer()
+        self.w = tf.Variable(
             initial_value=w_init(shape=(input_shape[-1], self.units)),
                             
             trainable=True)
@@ -30,6 +31,10 @@ class DenseLayer(Layer):
 
     def call(self, inputs):  
         #Given an input x, output y= func(W*x+b)
-        return tf.matmul(inputs, self.w) + self.b
+        output = tf.matmul(inputs, self.w) + self.b
+        if self._use_activation_function:
+           return tf.keras.activations.sigmoid(output)
+        else:
+           return output
 
 
