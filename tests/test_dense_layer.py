@@ -15,6 +15,7 @@ def test_dense():
     assert dense_layer.w.shape == (5, units)
     assert dense_layer.b.shape == (units,)
 
+#incomplete, have some questions
 def test_learning_with_single_input():
     units = 2
 
