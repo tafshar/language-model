@@ -6,15 +6,18 @@ import custom_layers.simple_rnn
 import custom_layers.lstm
 import tensorflow.keras.layers
 
+import time
+from custom_layers.emedding_layer import EmbeddingLayer
+from custom_layers.dense_layer import DenseLayer
+ 
 path_to_file = tf.keras.utils.get_file('shakespeare.txt', 'https://storage.googleapis.com/download.tensorflow.org/data/shakespeare.txt')
 
 text = open(path_to_file, 'rb').read().decode(encoding='utf-8')
 
-print ('Length of text: {} characters'.format(len(text)))
-#print(text[:1000])
 
 vocab = sorted(set(text))
 print('{} unique characters'.format(len(vocab)))
+
 
 
 #mapping from string to numerical representation (indices)
@@ -27,10 +30,7 @@ idx2char = np.array(vocab)
 
 #array of the integer representations of the characters
 text_as_int = np.array([char2idx[c] for c in text])
-print(len(text_as_int))
 
-
-print ('{} ---- characters mapped to int ---- > {}'.format(repr(text[:13]), text_as_int[:13]))
 
 
 # The maximum length sentence we want for a single input in characters
@@ -42,11 +42,6 @@ examples_per_epoch = len(text)//(seq_length+1)
 
 # Create training examples / targets
 char_dataset = tf.data.Dataset.from_tensor_slices(text_as_int)
-print(type(char_dataset))
-
-
-for i in char_dataset.take(5):
-    print(text_as_int[i.numpy()])
 
 sequences = char_dataset.batch(seq_length+1, drop_remainder=True)
 
@@ -93,11 +88,9 @@ rnn_units = 256
 
 def build_model(vocab_size, embedding_dim, rnn_units, batch_size):
   model = tf.keras.Sequential([
-
-    tf.keras.layers.Embedding(vocab_size, embedding_dim,
-                              batch_input_shape=[batch_size, None]),
+    EmbeddingLayer(vocab_size, embedding_dim),
     custom_layers.lstm.LSTM(rnn_units),
-    tf.keras.layers.Dense(vocab_size),
+    DenseLayer(vocab_size, False),
   ])
   return model
 
@@ -112,29 +105,11 @@ for input_example_batch, target_example_batch in dataset.take(1):
     example_batch_predictions = model(input_example_batch)
     print(example_batch_predictions.shape, "# (batch_size, sequence_length, vocab_size)")
 
-#questions about this
 print(model.summary())
 
 sampled_indices = tf.random.categorical(example_batch_predictions[0], num_samples=1)
-#Question: what dimension size/shape does axis -1 return
 sampled_indices = tf.squeeze(sampled_indices,axis=-1).numpy()
 
-#print(idx2char[sampled_indices])
-
-print("Input: \n", repr("".join(idx2char[input_example_batch[0]])))
-print()
-print("Next Char Predictions: \n", repr("".join(idx2char[sampled_indices ])))
-
-def loss(labels, logits):
-  return tf.keras.losses.sparse_categorical_crossentropy(labels, logits, from_logits=True)
-
-
-#QUESTION: losses
-example_batch_loss  = loss(target_example_batch, example_batch_predictions)
-print("Prediction shape: ", example_batch_predictions.shape, " # (batch_size, sequence_length, vocab_size)")
-print("scalar_loss:      ", example_batch_loss.numpy().mean())
-
-model.compile(optimizer='adam', loss=loss)
 
 checkpoint_dir = './training_checkpoints'
 # Name of the checkpoint files
@@ -144,16 +119,51 @@ checkpoint_callback=tf.keras.callbacks.ModelCheckpoint(
     filepath=checkpoint_prefix,
     save_weights_only=True)
 
-EPOCHS=10
-history = model.fit(dataset, epochs=EPOCHS, callbacks=[checkpoint_callback])
+#history = model.fit(dataset, epochs=EPOCHS, callbacks=[checkpoint_callback])
+optimizer = tf.keras.optimizers.Adam()
 
-tf.train.latest_checkpoint(checkpoint_dir)
+def train_step(inp, target):
+  #looking at gradient (derivative) of loss fucntion and optimize the weights of nn
+  #calculating the loss within training loop so we can see how each prediciton and loss changes per epoch/batch
+  with tf.GradientTape() as tape:
+    predictions = model(inp)
+    #forward calc
+    loss = tf.reduce_mean(
+        tf.keras.losses.sparse_categorical_crossentropy(
+            target, predictions, from_logits=True))
+  #what calculate gradients with respect to the model
+  grads = tape.gradient(loss, model.trainable_variables)
+  #update parameters
+  optimizer.apply_gradients(zip(grads, model.trainable_variables))
 
-model = build_model(vocab_size, embedding_dim, rnn_units, batch_size=1)
+  return loss
+
+# Training step
+EPOCHS = 10
+
+for epoch in range(EPOCHS):
+  start = time.time()
+
+  # initializing the hidden state at the start of every epoch
+  # initally hidden is None
+  hidden = model.reset_states()
+
+  for (batch_n, (inp, target)) in enumerate(dataset):
+    loss = train_step(inp, target)
+
+    if batch_n % 100 == 0:
+      template = 'Epoch {} Batch {} Loss {}'
+      print(template.format(epoch+1, batch_n, loss))
+
+  # saving (checkpoint) the model every 5 epochs
+  if (epoch + 1) % 5 == 0:
+    model.save_weights(checkpoint_prefix.format(epoch=epoch))
 
 # model.load_weights(tf.train.latest_checkpoint(checkpoint_dir))
+  print ('Epoch {} Loss {:.4f}'.format(epoch+1, loss))
+  print ('Time taken for 1 epoch {} sec\n'.format(time.time() - start))
 
-model.build(tf.TensorShape([1, None]))
+model.save_weights(checkpoint_prefix.format(epoch=epoch))
 
 def generate_text(model, start_string):
 
@@ -166,7 +176,7 @@ def generate_text(model, start_string):
 
     text_generated = []
 
-    temperature = 2.0
+    temperature = 1.0
 
     model.reset_states()
     for i in range(num_generate):
