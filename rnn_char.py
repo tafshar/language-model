@@ -2,8 +2,10 @@ import tensorflow as tf
 
 import numpy as np
 import os
-import time
- 
+import custom_layers.simple_rnn
+import custom_layers.lstm
+import tensorflow.keras.layers
+
 path_to_file = tf.keras.utils.get_file('shakespeare.txt', 'https://storage.googleapis.com/download.tensorflow.org/data/shakespeare.txt')
 
 text = open(path_to_file, 'rb').read().decode(encoding='utf-8')
@@ -12,7 +14,7 @@ print ('Length of text: {} characters'.format(len(text)))
 #print(text[:1000])
 
 vocab = sorted(set(text))
-print('{} unique charcters'.format(len(vocab)))
+print('{} unique characters'.format(len(vocab)))
 
 
 #mapping from string to numerical representation (indices)
@@ -86,23 +88,22 @@ vocab_size = len(vocab)
 #dimensions
 embedding_dim = 256
 #RNN units
-rnn_units = 1204
+rnn_units = 256
 
 
 def build_model(vocab_size, embedding_dim, rnn_units, batch_size):
   model = tf.keras.Sequential([
+
     tf.keras.layers.Embedding(vocab_size, embedding_dim,
                               batch_input_shape=[batch_size, None]),
-    tf.keras.layers.GRU(rnn_units,
-                        return_sequences=True,
-                        stateful=True,
-                        recurrent_initializer='glorot_uniform'),
-    tf.keras.layers.Dense(vocab_size)
+    custom_layers.lstm.LSTM(rnn_units),
+    tf.keras.layers.Dense(vocab_size),
   ])
   return model
 
+
 model = build_model(
-    vocab_size = len(vocab),
+    vocab_size=len(vocab),
     embedding_dim=embedding_dim,
     rnn_units=rnn_units,
     batch_size=BATCH_SIZE)
@@ -144,13 +145,13 @@ checkpoint_callback=tf.keras.callbacks.ModelCheckpoint(
     save_weights_only=True)
 
 EPOCHS=10
-#history = model.fit(dataset, epochs=EPOCHS, callbacks=[checkpoint_callback])
+history = model.fit(dataset, epochs=EPOCHS, callbacks=[checkpoint_callback])
 
 tf.train.latest_checkpoint(checkpoint_dir)
 
 model = build_model(vocab_size, embedding_dim, rnn_units, batch_size=1)
 
-model.load_weights(tf.train.latest_checkpoint(checkpoint_dir))
+# model.load_weights(tf.train.latest_checkpoint(checkpoint_dir))
 
 model.build(tf.TensorShape([1, None]))
 
