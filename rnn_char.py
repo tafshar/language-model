@@ -2,6 +2,10 @@ import tensorflow as tf
 
 import numpy as np
 import os
+import custom_layers.simple_rnn
+import custom_layers.lstm
+import tensorflow.keras.layers
+
 import time
 from custom_layers.emedding_layer import EmbeddingLayer
 from custom_layers.dense_layer import DenseLayer
@@ -12,6 +16,7 @@ text = open(path_to_file, 'rb').read().decode(encoding='utf-8')
 
 
 vocab = sorted(set(text))
+print('{} unique characters'.format(len(vocab)))
 
 
 
@@ -78,22 +83,26 @@ vocab_size = len(vocab)
 #dimensions
 embedding_dim = 256
 #RNN units
+
 rnn_units = 1204
 emb_layer = EmbeddingLayer(vocab_size, embedding_dim)
 dense_layer = DenseLayer(rnn_units, True)
 dense_layer_2 = DenseLayer(vocab_size, False)
 
 
+
+
 def build_model(vocab_size, embedding_dim, rnn_units, batch_size):
   model = tf.keras.Sequential([
-    emb_layer,
-    dense_layer,
-    dense_layer_2
+  emb_layer,
+  dense_layer,
+  dense_layer_2
   ])
   return model
 
+
 model = build_model(
-    vocab_size = len(vocab),
+    vocab_size=len(vocab),
     embedding_dim=embedding_dim,
     rnn_units=rnn_units,
     batch_size=BATCH_SIZE)
@@ -116,6 +125,7 @@ checkpoint_callback=tf.keras.callbacks.ModelCheckpoint(
     filepath=checkpoint_prefix,
     save_weights_only=True)
 
+#history = model.fit(dataset, epochs=EPOCHS, callbacks=[checkpoint_callback])
 optimizer = tf.keras.optimizers.Adam()
 
 def train_step(inp, target):
@@ -154,9 +164,11 @@ for epoch in range(EPOCHS):
   # saving (checkpoint) the model every 5 epochs
   if (epoch + 1) % 5 == 0:
     model.save_weights(checkpoint_prefix.format(epoch=epoch))
-  #breakpoint()
-  print ('Epoch {} Loss {:.4f}'.format(epoch+1, loss))
-  print ('Time taken for 1 epoch {} sec\n'.format(time.time() - start))
+
+
+# model.load_weights(tf.train.latest_checkpoint(checkpoint_dir))
+print ('Epoch {} Loss {:.4f}'.format(epoch+1, loss))
+print ('Time taken for 1 epoch {} sec\n'.format(time.time() - start))
 
 model.save_weights(checkpoint_prefix.format(epoch=epoch))
 
