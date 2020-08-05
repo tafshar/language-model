@@ -79,13 +79,16 @@ vocab_size = len(vocab)
 embedding_dim = 256
 #RNN units
 rnn_units = 1204
+emb_layer = EmbeddingLayer(vocab_size, embedding_dim)
+dense_layer = DenseLayer(rnn_units, True)
+dense_layer_2 = DenseLayer(vocab_size, False)
 
 
 def build_model(vocab_size, embedding_dim, rnn_units, batch_size):
   model = tf.keras.Sequential([
-    EmbeddingLayer(vocab_size, embedding_dim),
-    DenseLayer(rnn_units, 1),
-    DenseLayer(vocab_size, 0)
+    emb_layer,
+    dense_layer,
+    dense_layer_2
   ])
   return model
 
@@ -151,11 +154,12 @@ for epoch in range(EPOCHS):
   # saving (checkpoint) the model every 5 epochs
   if (epoch + 1) % 5 == 0:
     model.save_weights(checkpoint_prefix.format(epoch=epoch))
-
+  #breakpoint()
   print ('Epoch {} Loss {:.4f}'.format(epoch+1, loss))
   print ('Time taken for 1 epoch {} sec\n'.format(time.time() - start))
 
 model.save_weights(checkpoint_prefix.format(epoch=epoch))
+
 
 def generate_text(model, start_string):
 
