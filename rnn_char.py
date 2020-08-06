@@ -2,7 +2,7 @@ import tensorflow as tf
 
 import numpy as np
 import os
-import custom_layers.simple_rnn
+#import custom_layers.simple_rnn
 import custom_layers.lstm
 import tensorflow.keras.layers
 
@@ -83,8 +83,8 @@ vocab_size = len(vocab)
 #dimensions
 embedding_dim = 256
 #RNN units
+rnn_units = 256
 
-rnn_units = 1204
 emb_layer = EmbeddingLayer(vocab_size, embedding_dim)
 dense_layer = DenseLayer(rnn_units, True)
 dense_layer_2 = DenseLayer(vocab_size, False)
@@ -94,9 +94,9 @@ dense_layer_2 = DenseLayer(vocab_size, False)
 
 def build_model(vocab_size, embedding_dim, rnn_units, batch_size):
   model = tf.keras.Sequential([
-  emb_layer,
-  dense_layer,
-  dense_layer_2
+    EmbeddingLayer(vocab_size, embedding_dim),
+    custom_layers.lstm.LSTM(rnn_units),
+    DenseLayer(vocab_size, False),
   ])
   return model
 
