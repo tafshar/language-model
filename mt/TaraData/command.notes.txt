@@ -1,0 +1,11 @@
+          
+
+
+subword-nmt learn-bpe -s 1000 < train.combined.txt > combined_rules.txt
+ 
+subword-nmt apply-bpe -c combined_rules.txt < test.lc.src.txt > applied.test.src.txt
+subword-nmt apply-bpe -c combined_rules.txt < test.lc.tgt.txt > applied.test.tgt.txt
+ 
+cat applied.test.src.txt | sed "s/@@//g"
+cat applied.test.tgt.txt | sed "s/@@//g"
+ 
