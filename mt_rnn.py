@@ -10,13 +10,16 @@ from custom_layers.emedding_layer import EmbeddingLayer
 from custom_layers.dense_layer import DenseLayer
  
 text = open("mt/TaraData/applied.short.train.tgt.txt", "r").read()
-subwords = text.split(' ')
+subwords = text.split()
+sentences= text.split('\n')
 
 
 vocab = sorted(set(subwords))
 
 
-sub2idx = {u:i for i, u in enumerate(vocab)}
+sub2idx = {u:i for i, u in enumerate(vocab, start=1)}
+sub2idx["<EOS>"] = 0
+
 
 #array of character representation
 idx2sub = np.array(vocab)
@@ -26,23 +29,48 @@ idx2sub = np.array(vocab)
 text_as_int = np.array([sub2idx[c] for c in subwords])
 
 
+list_of_tokens = []
+for s in sentences:
+  s = s.strip().split()
+  list_of_tokens.append([sub2idx[c] for c in s])
 
-# The maximum length sentence we want for a single input in characters
-seq_length = 100
+sorted_list_of_tokens = list(sorted(list_of_tokens, key = len))
+
+#divide list into lists of size n
+def divide_tokens(list, n):
+  for i in range(0, len(list), n):  
+      yield list[i:i + n] 
+
+#small_list is a test variable that I was able to convert to a tensor becaue the all batches are the same size
+small_list = list(divide_tokens(sorted_list_of_tokens[:40], 20))
+
+#all data split into chunks of 20
+chunks = list(divide_tokens(sorted_list_of_tokens, 20)) 
+
+#function to pad each batch 
+def pad_chunk(list):
+  output = []
+  for x in list:
+    max_length =len(list[-1])
+    out = np.zeros(max_length, dtype="int")
+    out[:len(x)] = x
+    output.append(out)
+  return output
+
+padded_chunks = []
+for chunk in chunks:
+  padded_chunk = pad_chunk(chunk)
+  padded_chunks.append(padded_chunk)
+
+seq_length = 20
 
 #how many sequences for corpus
 examples_per_epoch = len(text)//(seq_length+1)
 
 # Create training examples / targets
-char_dataset = tf.data.Dataset.from_tensor_slices(text_as_int)
+sequences = tf.data.Dataset.from_tensor_slices(list(padded_chunks))
+#sequences = char_dataset.batch(seq_length+1, drop_remainder=True)
 
-sequences = char_dataset.batch(seq_length+1, drop_remainder=True)
-
-
-####item is of length 101, take 5 items
-for item in sequences.take(5):
-    print(repr(''.join(idx2sub[item.numpy()])))
-    print(len(item))
 
 #function to duplicate and shift source/target
 def split_input_target(chunk):
@@ -50,11 +78,14 @@ def split_input_target(chunk):
     target_text = chunk[1:]
     return input_text, target_text
 
-#map the seguences (our text batched into desired sequence length) to the function to create input and target
+#map the seguences to the function to create input and target
 dataset = sequences.map(split_input_target)
 
+#dataset = [split_input_target(x) for x in sequences]
+
+
 #first example in dataset shifted
-for input_example, target_example in  dataset.take(1):
+for input_example, target_example in dataset.take(1):
   print ('Input data: ', repr(''.join(idx2sub[input_example.numpy()])))
   print ('Target data:', repr(''.join(idx2sub[target_example.numpy()])))
 
@@ -66,8 +97,6 @@ for i, (input_idx, target_idx) in enumerate(zip(input_example[:5], target_exampl
   
 BATCH_SIZE = 64
 BUFFER_SIZE = 10000
-#Question: shuffle within buffer since the tf.data is meant to work with infinite sequences
-#Question: how is training batch size determined, what is ideal?
 
 dataset = dataset.shuffle(BUFFER_SIZE).batch(BATCH_SIZE, drop_remainder=True)
 print(dataset)
@@ -99,9 +128,14 @@ model = build_model(
     rnn_units=rnn_units,
     batch_size=BATCH_SIZE)
 
+
 for input_example_batch, target_example_batch in dataset.take(1):
+    #iterate over custom batches
     example_batch_predictions = model(input_example_batch)
     print(example_batch_predictions.shape, "# (batch_size, sequence_length, vocab_size)")
+
+    ##already built model, feed it our batches, iterate over batches 
+
 
 print(model.summary())
 
@@ -121,7 +155,7 @@ checkpoint_callback=tf.keras.callbacks.ModelCheckpoint(
 optimizer = tf.keras.optimizers.Adam()
 
 def train_step(inp, target):
-  #looking at gradient (derivative) of loss fucntion and optimize the weights of nn
+  #looking at gradient (derivative) of loss function and optimize the weights of nn
   #calculating the loss within training loop so we can see how each prediciton and loss changes per epoch/batch
   with tf.GradientTape() as tape:
     predictions = model(inp)
