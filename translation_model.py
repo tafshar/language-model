@@ -21,9 +21,9 @@ import json
 # Process training data and load vocab
 # ######### 
 
-src = open("mt/TaraData/applied.short.train.src.txt", "r").read()
-trg = open("mt/TaraData/applied.short.train.tgt.txt", "r").read()
-sub2idx_json = open("vocab_short.txt", "r").read()
+src = open("mt/TaraData/applied.med.train.tgt.txt", "r").read()
+trg = open("mt/TaraData/applied.med.train.tgt.txt", "r").read()
+sub2idx_json = open("vocab_med_trg.txt", "r").read()
 
 
 sub2idx = json.loads(sub2idx_json)
@@ -59,8 +59,6 @@ def create_batches(sorted_list_of_examples: List[List[int]], batch_size: int):
  
   for start_idx in range(0, len(sorted_list_of_examples) - batch_size, batch_size):
     max_len = max(len(x) for x in sorted_list_of_examples[start_idx:start_idx+batch_size])
-    # TODO: we may get an incomplete batch at the end
-    # The first token should always be SOS_ID and the last token should always be the EOS_ID/0, that's why we use max_len+2
     batch = np.zeros((batch_size, max_len + 2), dtype=np.int32)
     for i in range(batch_size):
       example = [constants.SOS_ID] + sorted_list_of_examples[start_idx+i]
@@ -116,12 +114,6 @@ rnn_units = 256
 model = MtModel(vocab_size, embedding_dim, rnn_units)
 
 src_input_example_batch, src_target_example_batch = merged_dataset[-1]
-example_batch_predictions = model(input_example_batch, target_example_batch)
-
-
-sampled_indices = tf.random.categorical(example_batch_predictions[0], num_samples=1)
-sampled_indices = tf.squeeze(sampled_indices,axis=-1).numpy()
-
 
 checkpoint_dir = './training_checkpoints'
 checkpoint_prefix = os.path.join(checkpoint_dir, "ckpt_{epoch}")
@@ -133,11 +125,16 @@ checkpoint_callback=tf.keras.callbacks.ModelCheckpoint(
 optimizer = tf.keras.optimizers.Adam()
 
 def train_step(inp, target):
+  loss = 0.0
   with tf.GradientTape() as tape:
-    predictions = model(inp, target[:,:-1])
-    loss = tf.reduce_mean(
+    enc_output, enc_hidden, enc_carry = model.call_encoder(inp)
+    dec_hidden = enc_hidden
+    dec_carry = enc_carry
+    for targidx in range(target.shape[1]-1):
+      dec_out, dec_hidden, dec_carry, _ = model.call_decoder(target[:, targidx], enc_output, dec_hidden, dec_carry)
+      loss += tf.reduce_mean(
         tf.keras.losses.sparse_categorical_crossentropy(
-            target[:,1:], predictions, from_logits=True))
+          target[:, targidx+1], dec_out, from_logits=True))
   grads = tape.gradient(loss, model.trainable_variables)
   #update parameters
   optimizer.apply_gradients(zip(grads, model.trainable_variables))
@@ -162,8 +159,6 @@ for epoch in range(EPOCHS):
       print(template.format(epoch+1, avg_loss))
       model.save_weights(checkpoint_prefix.format(epoch=epoch))
 
-#  if (epoch + 1) % 5 == 0:
- #   model.save_weights(checkpoint_prefix.format(epoch=epoch))
 
 print ('Epoch {} Loss {:.4f}'.format(epoch+1, loss))
 print ('Time taken for 1 epoch {} sec\n'.format(time.time() - start))
@@ -176,34 +171,38 @@ model.save_weights(checkpoint_prefix.format(epoch=epoch))
 
 def generate_text(model, source_sentence):
 
-  #characters to generate
+    #characters to generate
     num_generate = 1000
 
     source_sentence = source_sentence.split(' ')
     input_eval = [constants.SOS_ID] + [sub2idx[s] for s in source_sentence] + [constants.EOS_ID]
     input_eval = tf.expand_dims(input_eval, 0)
 
-    final_memory_state, final_carry_state = model.get_final_encoder_states(input_eval)
+    final_encoder_out, final_hidden_state, final_carry_state = model.call_encoder(input_eval)
 
     temperature = 1.0
 
-    decoder_input = [[constants.SOS_ID]]
+    decoder_input = [constants.SOS_ID]
     translation_id = []
 
     for i in range(num_generate):
         decoder_input_tf = tf.constant(decoder_input, dtype=tf.int32)
-        predictions, final_memory_state, final_carry_state = model.next_step_decoder(decoder_input_tf, final_memory_state, final_carry_state)
-        predictions = tf.squeeze(predictions, 0)
+        dec_out, dec_hidden, dec_carry, attn_weights = model.call_decoder(decoder_input_tf, final_encoder_out, final_hidden_state, final_carry_state)
+        
+        #dec_out = tf.squeeze(dec_out, 0)
 
-        predictions = predictions / temperature
-        predicted_id = tf.math.argmax(predictions, axis=-1)[0].numpy()
-        decoder_input = [[predicted_id]]
-       
-        translation_id.append(idx2sub[predicted_id])
+        dec_out = dec_out / temperature
+        predicted_id = tf.math.argmax(dec_out, axis=-1)[0].numpy()
+        decoder_input = predicted_id
+        predicted_id = tf.squeeze(predicted_id, 0)
+
+        current_subword = idx2sub[int(predicted_id)]
+        translation_id.append(current_subword)
         
         if predicted_id == 0:
           return (' '.join(translation_id))
 
+    return(' '.join(translation_id))
         
 
-print(generate_text(model, source_sentence=u"the cl@@ er@@ k of the house"))
+print(generate_text(model, source_sentence=u"le dis@@ cours d@@ u tr@@ ô@@ ne"))
