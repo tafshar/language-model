@@ -11,8 +11,8 @@ from custom_layers.emedding_layer import EmbeddingLayer
 from custom_layers.dense_layer import DenseLayer
 from custom_layers.mt_model import MtModel
 from custom_layers.attention import Attention
-import constants as constants
 from vocabulary import Vocabulary
+import constants as constants
 import json
 
 
@@ -21,9 +21,9 @@ import json
 # Process training data and load vocab
 # ######### 
 
-src = open("mt/TaraData/applied.med.train.tgt.txt", "r").read()
-trg = open("mt/TaraData/applied.med.train.tgt.txt", "r").read()
-sub2idx_json = open("vocab_med_trg.txt", "r").read()
+src = open("mt/TaraData/applied.short.train.tgt.txt", "r").read()
+trg = open("mt/TaraData/applied.short.train.tgt.txt", "r").read()
+sub2idx_json = open("vocab_short_trg.txt", "r").read()
 
 
 sub2idx = json.loads(sub2idx_json)
@@ -97,15 +97,15 @@ input_example = input_example_batch[0]
 target_example = target_example_batch[0]
 
   
-BATCH_SIZE = 64
+BATCH_SIZE = 32
 BUFFER_SIZE = 10000
 
 #output size
 vocab_size = len(sub2idx)
 #dimensions
-embedding_dim = 256
+embedding_dim = 64
 #RNN units
-rnn_units = 256
+rnn_units = 64
 
 ##################
 #### Train step
@@ -125,23 +125,74 @@ checkpoint_callback=tf.keras.callbacks.ModelCheckpoint(
 optimizer = tf.keras.optimizers.Adam()
 
 def train_step(inp, target):
-  loss = 0.0
+  losses = []
   with tf.GradientTape() as tape:
     enc_output, enc_hidden, enc_carry = model.call_encoder(inp)
-    dec_hidden = enc_hidden
-    dec_carry = enc_carry
+    dec_hidden = model.init_hidden(target.shape[0])
+    dec_carry = model.init_hidden(target.shape[0])
     for targidx in range(target.shape[1]-1):
       dec_out, dec_hidden, dec_carry, _ = model.call_decoder(target[:, targidx], enc_output, dec_hidden, dec_carry)
-      loss += tf.reduce_mean(
+      loss = tf.reduce_mean(
         tf.keras.losses.sparse_categorical_crossentropy(
-          target[:, targidx+1], dec_out, from_logits=True))
+          target[:, targidx+1], tf.squeeze(dec_out, axis=1), from_logits=True))
+      losses.append(loss)
+    loss = tf.reduce_mean(losses)       
   grads = tape.gradient(loss, model.trainable_variables)
+  grads = [tf.clip_by_norm(g, 5.0)
+             for g in grads]
   #update parameters
   optimizer.apply_gradients(zip(grads, model.trainable_variables))
 
   return loss
 
-EPOCHS = 10
+##################
+#### Generate translation
+##################
+
+def generate_text(model, source_sentence):
+
+    #characters to generate
+    num_generate = 1000
+
+    source_sentence = source_sentence.split(' ')
+    input_eval = [constants.SOS_ID] + [sub2idx[s] for s in source_sentence] + [constants.EOS_ID]
+    input_eval = tf.expand_dims(input_eval, 0)
+
+    encoder_out, hidden_state, carry_state = model.call_encoder(input_eval)
+    dec_hidden = model.init_hidden(1)
+    dec_carry = model.init_hidden(1)
+
+    temperature = 1.0
+
+    decoder_input = [constants.SOS_ID]
+    translation_id = []
+    attention = []
+
+    for i in range(num_generate):
+        decoder_input_tf = tf.constant(decoder_input, dtype=tf.int32)
+        dec_out, dec_hidden, dec_carry, attn_weights = model.call_decoder(decoder_input_tf, encoder_out, dec_hidden, dec_carry)
+        attention.append(attn_weights)
+        
+        #dec_out = tf.squeeze(dec_out, 0)
+
+        dec_out = dec_out / temperature
+        predicted_id = tf.math.argmax(dec_out, axis=-1)[0].numpy()
+        decoder_input = predicted_id
+        predicted_id = tf.squeeze(predicted_id, 0)
+
+        current_subword = idx2sub[int(predicted_id)]
+        translation_id.append(current_subword)
+        
+        if predicted_id == 0:
+          tf.stack(attention)
+          result = ' '.join(translation_id)
+          return result
+
+    tf.stack(attention)
+    result = ' '.join(translation_id)
+    return result, attention
+        
+EPOCHS = 50
 
 print('Number of batches per epoch: {}'.format(len(merged_dataset)))
 for epoch in range(EPOCHS):
@@ -158,51 +209,10 @@ for epoch in range(EPOCHS):
       avg_loss = sum_loss / batch_n
       print(template.format(epoch+1, avg_loss))
       model.save_weights(checkpoint_prefix.format(epoch=epoch))
+      print(generate_text(model, source_sentence=u"le dis@@ cours d@@ u tr@@ ô@@ ne"))
+      print(generate_text(model, source_sentence=u"él@@ ection d@@ u président"))
 
-
-print ('Epoch {} Loss {:.4f}'.format(epoch+1, loss))
-print ('Time taken for 1 epoch {} sec\n'.format(time.time() - start))
 
 model.save_weights(checkpoint_prefix.format(epoch=epoch))
-
-##################
-#### Generate translation
-##################
-
-def generate_text(model, source_sentence):
-
-    #characters to generate
-    num_generate = 1000
-
-    source_sentence = source_sentence.split(' ')
-    input_eval = [constants.SOS_ID] + [sub2idx[s] for s in source_sentence] + [constants.EOS_ID]
-    input_eval = tf.expand_dims(input_eval, 0)
-
-    final_encoder_out, final_hidden_state, final_carry_state = model.call_encoder(input_eval)
-
-    temperature = 1.0
-
-    decoder_input = [constants.SOS_ID]
-    translation_id = []
-
-    for i in range(num_generate):
-        decoder_input_tf = tf.constant(decoder_input, dtype=tf.int32)
-        dec_out, dec_hidden, dec_carry, attn_weights = model.call_decoder(decoder_input_tf, final_encoder_out, final_hidden_state, final_carry_state)
-        
-        #dec_out = tf.squeeze(dec_out, 0)
-
-        dec_out = dec_out / temperature
-        predicted_id = tf.math.argmax(dec_out, axis=-1)[0].numpy()
-        decoder_input = predicted_id
-        predicted_id = tf.squeeze(predicted_id, 0)
-
-        current_subword = idx2sub[int(predicted_id)]
-        translation_id.append(current_subword)
-        
-        if predicted_id == 0:
-          return (' '.join(translation_id))
-
-    return(' '.join(translation_id))
-        
-
-print(generate_text(model, source_sentence=u"le dis@@ cours d@@ u tr@@ ô@@ ne"))
+print ('Epoch {} Loss {:.4f}'.format(epoch+1, loss))
+print ('Time taken for 1 epoch {} sec\n'.format(time.time() - start))
