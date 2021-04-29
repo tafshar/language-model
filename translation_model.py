@@ -21,9 +21,9 @@ import json
 # Process training data and load vocab
 # ######### 
 
-src = open("mt/TaraData/applied.short.train.tgt.txt", "r").read()
-trg = open("mt/TaraData/applied.short.train.tgt.txt", "r").read()
-sub2idx_json = open("vocab_short_trg.txt", "r").read()
+src = open("mt/TaraData/applied.med.train.tgt.txt", "r").read()
+trg = open("mt/TaraData/applied.med.train.tgt.txt", "r").read()
+sub2idx_json = open("vocab_med_tgt.txt", "r").read()
 
 
 sub2idx = json.loads(sub2idx_json)
@@ -71,10 +71,9 @@ def create_batches(sorted_list_of_examples: List[List[int]], batch_size: int):
 src_data = [src_tuple[0] for src_tuple in sorted_list_of_tokens]
 trg_data = [trg_tuple[1] for trg_tuple in sorted_list_of_tokens]
 
-src_batches = create_batches(src_data, 20)
-trg_batches = create_batches(trg_data, 20)
+src_batches = create_batches(src_data, 100)
+trg_batches = create_batches(trg_data, 100)
 
-seq_length = 20
 
 
 #function to duplicate and shift source/target
@@ -95,6 +94,7 @@ merged_dataset = list(zip(src_batches, trg_batches))
 input_example_batch, target_example_batch = merged_dataset[-1]
 input_example = input_example_batch[0]
 target_example = target_example_batch[0]
+print("Starting training")
 
   
 BATCH_SIZE = 32
@@ -201,8 +201,10 @@ for epoch in range(EPOCHS):
 
   random.shuffle(merged_dataset) 
   for (batch_n, (inp, target)) in enumerate(merged_dataset):
+    start_batch = time.time()
     loss = train_step(inp, target)
     sum_loss += loss
+    print("Batch finished in {}".format(time.time() - start_batch))
 
     if batch_n +1 == len(merged_dataset):
       template = 'Epoch {} Loss {}'
