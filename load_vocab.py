@@ -18,6 +18,5 @@ if __name__ == '__main__':
     trg = args.target
 
     vocab = Vocabulary.create_vocab(src, trg)
-    #breakpoint()
     vocab.to_disk(args.vocab_path)
     print(f"Wrote vocabulary to {args.vocab_path}.")
