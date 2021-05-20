@@ -21,9 +21,9 @@ import json
 # Process training data and load vocab
 # ######### 
 
-src = open("mt/TaraData/applied.med.train.tgt.txt", "r").read()
-trg = open("mt/TaraData/applied.med.train.tgt.txt", "r").read()
-sub2idx_json = open("vocab_med_tgt.txt", "r").read()
+src = open("mt/TaraData/applied.medium.train.src.txt", "r").read()
+trg = open("mt/TaraData/applied.medium.train.tgt.txt", "r").read()
+sub2idx_json = open("enfr_vocab_med.txt", "r").read()
 
 
 sub2idx = json.loads(sub2idx_json)
@@ -103,9 +103,9 @@ BUFFER_SIZE = 10000
 #output size
 vocab_size = len(sub2idx)
 #dimensions
-embedding_dim = 64
+embedding_dim = 128
 #RNN units
-rnn_units = 64
+rnn_units = 128
 
 ##################
 #### Train step

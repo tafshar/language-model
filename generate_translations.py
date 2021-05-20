@@ -10,9 +10,9 @@ import constants as constants
 from vocabulary import Vocabulary
 
 
-src = open("mt/TaraData/applied.short.train.tgt.txt", "r").read()
-trg = open("mt/TaraData/applied.short.train.tgt.txt", "r").read()
-sub2idx_json = open("vocab_short_trg.txt", "r").read()
+src = open("mt/TaraData/applied.medium.train.src.txt", "r").read()
+trg = open("mt/TaraData/applied.medium.train.tgt.txt", "r").read()
+sub2idx_json = open("enfr_vocab_med_txt", "r").read()
 
 sub2idx = json.loads(sub2idx_json)
 
